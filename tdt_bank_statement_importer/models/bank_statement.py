@@ -31,6 +31,7 @@ class BankStatementImporter(models.TransientModel):
     def _get_banks(self):
         return [
             ('fcib', 'FCIB (First Carribean International Bank)'),
+            ('emirates_nbd', 'Emirates NBD'),
         ]
 
     csv = fields.Binary(
@@ -66,6 +67,39 @@ class BankStatementImporter(models.TransientModel):
         default='fcib',
         required=True,
     )
+
+    def _emirates_nbd_parse(self, stream):
+        FIELDS = (
+            'type', 'account', 'date', 'amount', 'op_type', 'op_name',
+            'ref_code', 'ref_name', 'name', 'ref', '_', 'date_mov', 'op_code',
+        )
+        CONV = {
+            'date': lambda x: datetime.strptime(x, '%m/%d/%Y'),
+            'amount': float,
+            'date_mov': lambda x: datetime.strptime(x, '%d/%m/%Y'),
+        }
+        reader = csv.DictReader(stream, fieldnames=FIELDS)
+        # Header
+        ltype, account, date_begin, date_end, _, currency = reader.reader.__next__()
+        if ltype != '1':
+            raise ValidationError('Wrong file header format')
+        date_begin = datetime.strptime(date_begin, '%d%m%Y')
+        date_end = datetime.strptime(date_end, '%d%m%Y')
+        # Normal lines
+        for line in reader:
+            if line['type'] != '2':
+                raise ValidationError('Wrong format on line %d' % reader.line_num)
+            for i in CONV:
+                line[i] = CONV[i](line[i])
+            if line['op_type'] == 'DR':
+                line['amount'] *= -1
+            self.env['account.bank.statement.line'].create({
+                'statement_id': self.statement_id.id,
+                'date': line['date'],
+                'name': line['name'],
+                'amount': line['amount'],
+                'ref': line['ref'],
+            })
 
     def _fcib_parse(self, stream):
         def fcib_header(inp):
@@ -105,6 +139,7 @@ class BankStatementImporter(models.TransientModel):
             raise UserError('No file selected')
         parsers = {
             'fcib': self._fcib_parse,
+            'emirates_nbd': self._emirates_nbd_parse,
         }
         inp = io.StringIO(b64decode(self.csv).decode(self.encoding))
         return parsers[self.bank](inp)
