@@ -71,7 +71,7 @@ class BankStatementImporter(models.TransientModel):
     def _emirates_nbd_parse(self, stream):
         FIELDS = (
             'type', 'account', 'date', 'amount', 'op_type', 'op_name',
-            'ref_code', 'ref_name', 'name', 'ref', '_', 'date_mov', 'op_code',
+            'ref', 'ref_name', 'name', 'note', '_', 'date_mov', 'op_code',
         )
         CONV = {
             'date': lambda x: datetime.strptime(x, '%m/%d/%Y'),
@@ -93,10 +93,13 @@ class BankStatementImporter(models.TransientModel):
                 line[i] = CONV[i](line[i])
             if line['op_type'] == 'DR':
                 line['amount'] *= -1
+            name = ', '.join((
+                line[i] for i in ('op_name', 'ref_name', 'name', 'note')
+            ))
             self.env['account.bank.statement.line'].create({
                 'statement_id': self.statement_id.id,
                 'date': line['date'],
-                'name': line['name'],
+                'name': name,
                 'amount': line['amount'],
                 'ref': line['ref'],
             })
