@@ -59,7 +59,7 @@ class BankStatementImporter(models.TransientModel):
     )
     statement_id = fields.Many2one(
         'account.bank.statement',
-        required=True,
+        #required=True,
     )
     bank = fields.Selection(
         selection=_get_banks,
